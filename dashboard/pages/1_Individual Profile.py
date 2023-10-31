@@ -28,9 +28,8 @@ def retrieve_goog_sch_profile(name):
         return profile
     return None
 
-
 # mapping is done with google scholar url since url is unique
-def create_collab_network_graph(author_details, mapping):
+def create_collab_network_graph(author_details, mapping, filter):
     G = nx.Graph()
     edges = set()
 
@@ -39,44 +38,67 @@ def create_collab_network_graph(author_details, mapping):
     type_list = []
     # Name of author
     name_list = []
+    url_list = []
+    author_url = author_details['goog_sch_url']
     for idx,a in enumerate(mapping.keys()):
         G.add_node(a)
         if idx==0:
             type_list.append('#FFFF00')
             name_list.append(author_details['name'])
+            url_list.append(author_url)
         else:
             co_author_details = author_details['co_authors_url'][idx-1]
             co_author_aff = co_author_details['aff']
             co_author_name = co_author_details['name']
-            # If from University 
-            if 'University' in co_author_aff or 'Institute' in co_author_aff or 'College' in co_author_aff:
-                type_list.append('#FF0000')
-                name_list.append(co_author_name)
-            # If external collaborator
-            else:
-                type_list.append('#808080')
-                name_list.append(co_author_name)
+            if filter=='All Collaborators':
+                # If from University 
+                if 'University' in co_author_aff or 'Institute' in co_author_aff or 'College' in co_author_aff or "Professor" in co_author_aff:
+                    type_list.append('#008000')
+                    name_list.append(co_author_name)
+                    url_list.append(co_author_details['url'])
 
-    author_url = author_details['goog_sch_url']
+                # If external collaborator
+                else:
+                    type_list.append('#FF0000')
+                    name_list.append(co_author_name)
+                    url_list.append(co_author_details['url'])
+    
+            elif filter=='🟢 Academic Collaborators':
+                # If from University 
+                if 'University' in co_author_aff or 'Institute' in co_author_aff or 'College' in co_author_aff or "Professor" in co_author_aff:
+                    type_list.append('#008000')
+                    name_list.append(co_author_name)
+                    url_list.append(co_author_details['url'])
+
+            # Non Academic Collaborators
+            else:
+                # If external collaborator
+                if 'University' not in co_author_aff and 'Institute' not in co_author_aff and 'College' not in co_author_aff and "Professor" not in co_author_aff:
+                    type_list.append('#FF0000')
+                    name_list.append(co_author_name)
+                    url_list.append(co_author_details['url'])
+
     # Add edges for direct collaborations
     for co_author in mapping[author_url]:
-        G.add_edge(author_url, co_author)
-        edges.add((author_url, co_author))
+        if co_author in url_list:  
+            G.add_edge(author_url, co_author)
+            edges.add((author_url, co_author))
 
     # Add connections between co-authors who have collaborated with each other before
     for co_author in mapping[author_url]:
-        if co_author in mapping:
+        if co_author in mapping and co_author in url_list:
             for co_co_author in mapping[co_author]:
-                if co_co_author != author_url and co_co_author in mapping[author_url] and (co_co_author, co_author) not in edges:
+                if (co_co_author != author_url) and (co_co_author in mapping[author_url]) and (co_co_author in url_list):
+                    print(co_co_author,co_author)
                     G.add_edge(co_author, co_co_author)
                     edges.add((co_author, co_co_author))
     return G, name_list,type_list
+
 
 st.set_page_config(
     page_title="Individual Profile",
     page_icon="👋",
     layout="wide",
-    # initial_sidebar_state="expanded",
 )
 
 st.title('Personal Dashboard')
@@ -128,7 +150,7 @@ if name:
         btn_1,btn_2,btn_3,btn_4,btn_5 = st.columns(5)
 
         btn_1.link_button(
-            label=':link: NTU', 
+            label='  :link: DR-NTU  ', 
             url=profile['urls']['dr_ntu']if profile['urls']['dr_ntu'] is not None else '', 
             disabled=True if profile['urls']['dr_ntu'] is None else False,
         )
@@ -158,7 +180,7 @@ if name:
             disabled=True if profile['email'] is None else False
         )
 
-    st.header('Productivity Metrics 📈')
+    st.header('Metrics 📈')
     row2_col1,row2_col2,row2_col3,row2_col4,row2_col5,row2_col6 = st.columns(6)
 
     cur_year = datetime.date.today().year
@@ -214,7 +236,7 @@ if name:
     row_3_col1,row3_col2,row3_col3 = st.columns(3)
 
 
-    tab_list = ['About','Productivity Trend','Collaborators']
+    tab_list = ['About','Trends','Collaborators']
     whitespace = 6
     tabs = st.tabs([s.center(whitespace,"\u2001") for s in tab_list])
     tab_css = """
@@ -249,6 +271,19 @@ if name:
             if profile['grants']:
                 for grant in profile['grants']:
                     st.write(f"- {grant}")
+            else:
+                st.write('NA')
+
+        with st.expander('Patents'):
+            if profile['patents']:
+                for patent in profile['patents']:
+                    st.markdown(f"#### {patent['title']}")
+                    st.markdown(f"{patent['abstract'][1:]}")
+                    st.markdown(f"##### Link:")
+                    st.markdown(f"[{patent['link']}]({patent['link']})")
+            else:
+                st.write('NA')
+        
 
     with tabs[1]:
         total_pub_df = pd.DataFrame({'Year': profile['pub_graph'].keys(), 'Num of Publications':profile['pub_graph'].values()})
@@ -300,15 +335,18 @@ if name:
         st.dataframe(collab_df,
                      column_config={
                          'Google Scholar URL':st.column_config.LinkColumn('URL Link')
-                     }
+                     },
+                     hide_index=True
                      )
         
         st.markdown("<font size='5'>Collaborator Network</font>", unsafe_allow_html=True)
         
         if profile['co_authors_url']:
-            G,name_list,type_list = create_collab_network_graph(goog_sch_profile,profile['co_author_network'])
+
+            selected_filter = st.selectbox(label='Choose Type of Collaborator',options=['All Collaborators','🟢 Academic Collaborators','🔴 Non-Academic Collaborators'])
+            G,name_list,type_list = create_collab_network_graph(goog_sch_profile,profile['co_author_network'],selected_filter)
             adjmat = nx.to_numpy_array(G)
-            d3 = d3graph(charge=2000)
+            d3 = d3graph(charge=4000)
             d3.graph(adjmat)
             d3.set_node_properties(label=name_list,color=type_list)
             d3.show(show_slider=False,figsize=(1600,900))
