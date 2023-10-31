@@ -39,27 +39,61 @@ row1[3].metric(
     value = scse_metric['total_grants']
 )
 
+tab_list = ['About Us','Trends','Faculty Members']
+whitespace = 6
+tabs = st.tabs([s.center(whitespace,"\u2001") for s in tab_list])
+tab_css = """
+<style>
+button[data-baseweb="tab"] > div[data-testid="stMarkdownContainer"] > p {
+font-size: 24px;
+}
+</style>
+"""
+st.markdown(tab_css, unsafe_allow_html=True)
+with tabs[0]:
+    with open('./data_source/prof_raw_data/scse_intro.json','r')as f:
+        intro = json.load(f)['intro'][:-1]
+    for paragraphs in intro:
+        st.write(paragraphs)    
 
-st.subheader('Faculty Members')
-faculty_table = pd.read_csv('./data_source/processed_data/faculty_member.csv')
-faculty_table.drop(columns=['Unnamed: 0'],inplace=True)
+with tabs[1]:
+    with open('./data_source/processed_data/scse_trend.json','r') as f:
+          faculty_trend = json.load(f)
 
-# extract unique set of research topics
-unique_topics = set()
-for interests in faculty_table['Recent Research Interest'].tolist():
-        for interest in interests.split(','):
-            if interest!= ' ':
-                unique_topics.add(interest)
-unique_topics = sorted(list(unique_topics))
+    total_pub_df = pd.DataFrame({'Year': faculty_trend['pub_trend'].keys(), 'Num of Publications':faculty_trend['pub_trend'].values()})
+    total_pub_df['Year'] = total_pub_df['Year'].astype('str')
+    total_pub_df = total_pub_df.sort_values(by='Year')
+    st.markdown("<font size='5'>Publication</font>", unsafe_allow_html=True)
+    st.bar_chart(data=total_pub_df, x='Year', y='Num of Publications')
 
-options = st.multiselect(label='Filter by Recent Research Interest',options=unique_topics,default=None)
+    total_citation_df = pd.DataFrame({'Year': faculty_trend['cite_trend'].keys(),'Num of Citations':faculty_trend['cite_trend'].values()})
+    total_citation_df['Year'] = total_citation_df['Year'].astype('str')
+    total_citation_df = total_citation_df.sort_values(by='Year')
+    st.markdown("<font size='5'>Citation</font>", unsafe_allow_html=True)
+    st.bar_chart(data=total_citation_df, x='Year', y='Num of Citations')
 
-faculty_table['Recent Research Interest'] = faculty_table['Recent Research Interest'].str.split(',')
-# Filter by all the options selected
-df_filtered = faculty_table[faculty_table['Recent Research Interest'].apply(lambda x: all(option in x for option in options))]
-# Display the filtered dataframe
-st.dataframe(df_filtered,use_container_width=True,hide_index=True)
 
+
+# st.subheader('Faculty Members')
+with tabs[2]:
+    faculty_table = pd.read_csv('./data_source/processed_data/faculty_member.csv')
+    faculty_table.drop(columns=['Unnamed: 0'],inplace=True)
+
+    # extract unique set of research topics
+    unique_topics = set()
+    for interests in faculty_table['Recent Research Interest'].tolist():
+            for interest in interests.split(','):
+                if interest!= ' ':
+                    unique_topics.add(interest)
+    unique_topics = sorted(list(unique_topics))
+
+    options = st.multiselect(label='Filter by Recent Research Interest',options=unique_topics,default=None)
+
+    faculty_table['Recent Research Interest'] = faculty_table['Recent Research Interest'].str.split(',')
+    # Filter by all the options selected
+    df_filtered = faculty_table[faculty_table['Recent Research Interest'].apply(lambda x: all(option in x for option in options))]
+    # Display the filtered dataframe
+    st.dataframe(df_filtered,use_container_width=True,hide_index=True)
 
 
 
